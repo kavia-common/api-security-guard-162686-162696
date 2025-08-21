@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +30,7 @@ from .storage import (
     ReportingService,
 )
 from .services import DetectionService
+from .rate_limit import AdaptiveRateLimitMiddleware, build_adaptive_rate_limiter
 
 openapi_tags = [
     {"name": "health", "description": "Service health and info."},
@@ -37,6 +38,7 @@ openapi_tags = [
     {"name": "api", "description": "API/OpenAPI endpoint management."},
     {"name": "findings", "description": "Security findings and alerts."},
     {"name": "rate_limits", "description": "Rate limiting policies."},
+    {"name": "rate_limits_status", "description": "Runtime rate limit status and counters."},
     {"name": "keys", "description": "API key management."},
     {"name": "reports", "description": "Reporting and analytics."},
 ]
@@ -64,6 +66,10 @@ _findings = FindingRepository()
 _rate_limits = RateLimitRepository()
 _reports = ReportingService(events=_events, findings=_findings)
 _detection = DetectionService(api_catalog=_api_desc, events=_events, findings=_findings)
+
+# Initialize adaptive rate limiter and register middleware
+_limiter = build_adaptive_rate_limiter(rate_limits=_rate_limits, events=_events, api_catalog=_api_desc, service_name="backend")
+app.add_middleware(AdaptiveRateLimitMiddleware, limiter=_limiter)
 
 
 # PUBLIC_INTERFACE
@@ -340,6 +346,23 @@ def ack_finding(finding_id: str, payload: FindingAcknowledgeRequest):
 
 
 # Rate limit endpoints
+# PUBLIC_INTERFACE
+@app.get(
+    "/rate-limits/status",
+    summary="Rate limit status",
+    description="Return current in-memory rate limit counters, penalty factors, and last-hit timestamps for observability.",
+    tags=["rate_limits_status"],
+)
+def rate_limit_status() -> Dict[str, Any]:
+    """
+    Retrieve the current runtime view of rate limiter state.
+
+    Returns:
+    - Map keyed by "<scope>:<scope_key>" with endpoints showing recent hits and penalties.
+    """
+    return _limiter.status()
+
+
 # PUBLIC_INTERFACE
 @app.post(
     "/rate-limits",
