@@ -20,6 +20,7 @@ from .shadow_detector import ShadowAPIDetector
 from .anomaly_detector import AnomalyDetector
 from .owasp_rules import check_sensitive_header_leak, check_sensitive_path_method, check_large_payload
 from .remediator import Remediator
+from .threat_intel import enrich_threat_context
 
 
 class DetectionService:
