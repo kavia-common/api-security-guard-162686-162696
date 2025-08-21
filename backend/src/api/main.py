@@ -29,6 +29,7 @@ from .storage import (
     RateLimitRepository,
     ReportingService,
 )
+from .services import DetectionService
 
 openapi_tags = [
     {"name": "health", "description": "Service health and info."},
@@ -62,6 +63,7 @@ _events = EventRepository()
 _findings = FindingRepository()
 _rate_limits = RateLimitRepository()
 _reports = ReportingService(events=_events, findings=_findings)
+_detection = DetectionService(api_catalog=_api_desc, events=_events, findings=_findings)
 
 
 # PUBLIC_INTERFACE
@@ -94,6 +96,12 @@ def ingest_event(payload: EventIngestRequest):
     - EventResponse with generated ID and timestamp.
     """
     rec = _events.add(payload.model_dump())
+    # Run lightweight detectors and auto-create findings as needed
+    try:
+        _detection.on_event_ingested(rec)
+    except Exception:
+        # Detectors should never block ingestion; fail-safe
+        pass
     return EventResponse(
         id=rec.id,
         timestamp=rec.timestamp,
